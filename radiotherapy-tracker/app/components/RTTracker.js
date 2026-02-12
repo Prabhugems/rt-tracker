@@ -4,20 +4,8 @@ import { useState, useMemo, useEffect, useRef } from "react";
 // ═══════════════════════════════════════════════════════
 // DATA & CONFIG
 // ═══════════════════════════════════════════════════════
-const PASSWORDS = { admin: "admin123", team: "team123" };
 const MODES = ["Cash", "GPay", "PhonePe", "Card", "NEFT", "Cheque", "UPI", "Other"];
 const MODE_COLORS = { Cash: "#10b981", GPay: "#6366f1", PhonePe: "#8b5cf6", Card: "#f59e0b", NEFT: "#0ea5e9", Cheque: "#ec4899", UPI: "#14b8a6", Other: "#94a3b8" };
-
-const INITIAL = [
-  { id: "d1", fields: { regNo: "RT-2601", opDate: "2026-01-15", ipNo: "IP-1201", name: "Rajesh Kumar", amount: 15000, mode: "GPay", receiptDate: "2026-01-15", billClosed: "" }, created: "2026-01-15T10:30:00" },
-  { id: "d2", fields: { regNo: "RT-2602", opDate: "2026-01-20", ipNo: "IP-1202", name: "Priya Sharma", amount: 25000, mode: "NEFT", receiptDate: "2026-01-20", billClosed: "2026-02-05" }, created: "2026-01-20T14:15:00" },
-  { id: "d3", fields: { regNo: "RT-2603", opDate: "2026-02-01", ipNo: "IP-1203", name: "Mohammed Ali", amount: 10000, mode: "Cash", receiptDate: "2026-02-01", billClosed: "" }, created: "2026-02-01T09:00:00" },
-  { id: "d4", fields: { regNo: "RT-2604", opDate: "2026-02-05", ipNo: "IP-1204", name: "Lakshmi Devi", amount: 30000, mode: "Card", receiptDate: "2026-02-05", billClosed: "" }, created: "2026-02-05T11:45:00" },
-  { id: "d5", fields: { regNo: "RT-2605", opDate: "2026-02-08", ipNo: "IP-1205", name: "Suresh Babu", amount: 20000, mode: "UPI", receiptDate: "2026-02-08", billClosed: "2026-02-10" }, created: "2026-02-08T16:20:00" },
-  { id: "d6", fields: { regNo: "RT-2606", opDate: "2026-02-10", ipNo: "IP-1206", name: "Anitha Reddy", amount: 18500, mode: "PhonePe", receiptDate: "2026-02-10", billClosed: "" }, created: "2026-02-10T08:30:00" },
-  { id: "d7", fields: { regNo: "RT-2607", opDate: "2026-02-11", ipNo: "IP-1207", name: "Venkat Rao", amount: 42000, mode: "NEFT", receiptDate: "2026-02-11", billClosed: "" }, created: "2026-02-11T13:00:00" },
-  { id: "d8", fields: { regNo: "RT-2608", opDate: "2026-02-12", ipNo: "IP-1208", name: "Fatima Begum", amount: 12000, mode: "GPay", receiptDate: "2026-02-12", billClosed: "2026-02-12" }, created: "2026-02-12T10:10:00" },
-];
 
 const fmt = (v) => { const n = parseFloat(v); return isNaN(n) ? "₹0" : "₹" + n.toLocaleString("en-IN"); };
 const fmtDate = (v) => { if (!v) return "—"; try { return new Date(v + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return v; } };
@@ -101,10 +89,14 @@ function Sparkline({ data, color = "#6366f1", width = 120, height = 32 }) {
 // ═══════════════════════════════════════════════════════
 export default function App() {
   const [role, setRole] = useState(null);
+  const [userName, setUserName] = useState("");
+  const [loginUser, setLoginUser] = useState("");
   const [pw, setPw] = useState("");
   const [loginErr, setLoginErr] = useState("");
   const [loginShake, setLoginShake] = useState(false);
-  const [records, setRecords] = useState(INITIAL);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [view, setView] = useState("dashboard");
   const [search, setSearch] = useState("");
   const [filterMode, setFilterMode] = useState("All");
@@ -126,12 +118,47 @@ export default function App() {
 
   useEffect(() => { setTimeout(() => setMounted(true), 100); }, []);
 
+  const fetchRecords = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/records");
+      if (res.ok) { const data = await res.json(); setRecords(data); }
+      else notify("Failed to load records", "error");
+    } catch { notify("Network error loading records", "error"); }
+    setLoading(false);
+  };
+
+  useEffect(() => { if (role) fetchRecords(); }, [role]);
+
   const notify = (msg, type) => { setToast({ msg, type: type || "success" }); setTimeout(() => setToast(null), 3000); };
 
-  const doLogin = () => {
-    if (pw === PASSWORDS.admin) { setRole("admin"); setLoginErr(""); }
-    else if (pw === PASSWORDS.team) { setRole("team"); setLoginErr(""); }
-    else { setLoginErr("Invalid credentials"); setLoginShake(true); setTimeout(() => setLoginShake(false), 500); }
+  const doLogin = async () => {
+    if (!loginUser.trim() || !pw.trim()) {
+      setLoginErr("Enter username and password");
+      setLoginShake(true); setTimeout(() => setLoginShake(false), 500);
+      return;
+    }
+    setLoginLoading(true);
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: loginUser.trim(), password: pw }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRole(data.role);
+        setUserName(data.name || data.username);
+        setLoginErr("");
+      } else {
+        setLoginErr(data.error || "Invalid credentials");
+        setLoginShake(true); setTimeout(() => setLoginShake(false), 500);
+      }
+    } catch {
+      setLoginErr("Network error. Please try again.");
+      setLoginShake(true); setTimeout(() => setLoginShake(false), 500);
+    }
+    setLoginLoading(false);
     setPw("");
   };
 
@@ -159,31 +186,77 @@ export default function App() {
 
   const toggleSort = (f) => { if (sortField === f) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortField(f); setSortDir("asc"); } };
 
-  const handleAdd = () => {
+  const [saving, setSaving] = useState(false);
+
+  const handleAdd = async () => {
     const e = {};
     if (!form.regNo.trim()) e.regNo = true; if (!form.opDate) e.opDate = true;
     if (!form.ipNo.trim()) e.ipNo = true; if (!form.name.trim()) e.name = true;
     if (!form.amount || parseFloat(form.amount) <= 0) e.amount = true; if (!form.receiptDate) e.receiptDate = true;
     setFormErrors(e); if (Object.keys(e).length) return;
-    setRecords(p => [...p, { id: "r" + Date.now(), fields: { ...form, amount: parseFloat(form.amount), billClosed: form.billClosed || "" }, created: new Date().toISOString() }]);
-    setForm({ ...empty }); setFormErrors({}); setView("table"); notify("Record added successfully!");
+    setSaving(true);
+    try {
+      const res = await fetch("/api/records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: { ...form, amount: parseFloat(form.amount), billClosed: form.billClosed || "" } }),
+      });
+      if (res.ok) {
+        const newRec = await res.json();
+        setRecords(p => [...p, newRec]);
+        setForm({ ...empty }); setFormErrors({}); setView("table"); notify("Record added successfully!");
+      } else notify("Failed to add record", "error");
+    } catch { notify("Network error", "error"); }
+    setSaving(false);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editRec) return;
-    setRecords(p => p.map(r => r.id === editRec.id ? { ...r, fields: { ...editRec.fields, amount: parseFloat(editRec.fields.amount) || 0 } } : r));
-    setEditRec(null); notify("Record updated!");
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/records/${editRec.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: { ...editRec.fields, amount: parseFloat(editRec.fields.amount) || 0 } }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRecords(p => p.map(r => r.id === editRec.id ? updated : r));
+        setEditRec(null); notify("Record updated!");
+      } else notify("Failed to update record", "error");
+    } catch { notify("Network error", "error"); }
+    setSaving(false);
   };
 
-  const handleBillClose = () => {
+  const handleBillClose = async () => {
     if (!billCloseRec || !billCloseDate) return;
-    setRecords(p => p.map(r => r.id === billCloseRec.id ? { ...r, fields: { ...r.fields, billClosed: billCloseDate } } : r));
-    setBillCloseRec(null); setBillCloseDate(""); notify("Bill closed successfully!");
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/records/${billCloseRec.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: { billClosed: billCloseDate } }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRecords(p => p.map(r => r.id === billCloseRec.id ? updated : r));
+        setBillCloseRec(null); setBillCloseDate(""); notify("Bill closed successfully!");
+      } else notify("Failed to close bill", "error");
+    } catch { notify("Network error", "error"); }
+    setSaving(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteId) return;
-    setRecords(p => p.filter(r => r.id !== deleteId)); setDeleteId(null); notify("Record deleted.");
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/records/${deleteId}`, { method: "DELETE" });
+      if (res.ok) {
+        setRecords(p => p.filter(r => r.id !== deleteId));
+        setDeleteId(null); notify("Record deleted.");
+      } else notify("Failed to delete record", "error");
+    } catch { notify("Network error", "error"); }
+    setSaving(false);
   };
 
   const exportCSV = () => {
@@ -294,11 +367,27 @@ export default function App() {
             <p style={{ color: "#64748b", fontSize: 13, marginTop: 6, fontWeight: 400 }}>Radiotherapy Patient Advance Management System</p>
           </div>
 
-          <div style={{ marginBottom: 20, animation: loginShake ? "shake 0.4s" : "none" }}>
+          <div style={{ marginBottom: 16, animation: loginShake ? "shake 0.4s" : "none" }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#94a3b8", marginBottom: 8, textTransform: "uppercase", letterSpacing: "1px" }}>Username</label>
+            <input type="text" value={loginUser} onChange={e => setLoginUser(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && doLogin()}
+              placeholder="Enter your username"
+              style={{
+                width: "100%", padding: "14px 18px", background: "rgba(255,255,255,0.05)",
+                border: `1.5px solid ${loginErr ? "#ef4444" : "rgba(255,255,255,0.1)"}`,
+                borderRadius: 12, fontSize: 14, color: "#f1f5f9", outline: "none",
+                transition: "all 0.2s", boxSizing: "border-box",
+              }}
+              onFocus={e => e.target.style.borderColor = "#14b8a6"}
+              onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.1)"}
+            />
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
             <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#94a3b8", marginBottom: 8, textTransform: "uppercase", letterSpacing: "1px" }}>Password</label>
             <input type="password" value={pw} onChange={e => setPw(e.target.value)}
               onKeyDown={e => e.key === "Enter" && doLogin()}
-              placeholder="Enter your access password"
+              placeholder="Enter your password"
               style={{
                 width: "100%", padding: "14px 18px", background: "rgba(255,255,255,0.05)",
                 border: `1.5px solid ${loginErr ? "#ef4444" : "rgba(255,255,255,0.1)"}`,
@@ -311,22 +400,14 @@ export default function App() {
             {loginErr && <p style={{ color: "#f87171", fontSize: 12, marginTop: 8, fontWeight: 500 }}>{loginErr}</p>}
           </div>
 
-          <button onClick={doLogin} className="btn-press" style={{
-            width: "100%", padding: 15, border: "none", borderRadius: 12, cursor: "pointer",
+          <button onClick={doLogin} disabled={loginLoading} className="btn-press" style={{
+            width: "100%", padding: 15, border: "none", borderRadius: 12, cursor: loginLoading ? "wait" : "pointer",
             background: "linear-gradient(135deg, #0f766e, #14b8a6)", color: "#fff",
             fontSize: 15, fontWeight: 700, letterSpacing: "0.3px", fontFamily: "'Outfit', sans-serif",
-            boxShadow: "0 4px 16px rgba(15,118,110,0.3)",
+            boxShadow: "0 4px 16px rgba(15,118,110,0.3)", opacity: loginLoading ? 0.7 : 1,
           }}>
-            Sign In
+            {loginLoading ? "Signing in..." : "Sign In"}
           </button>
-
-          <div style={{ marginTop: 28, padding: 16, background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.12)", borderRadius: 12, textAlign: "center" }}>
-            <p style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 6 }}>Demo Credentials</p>
-            <p style={{ fontSize: 12, color: "#94a3b8" }}>
-              Admin: <code style={{ background: "rgba(255,255,255,0.06)", padding: "2px 8px", borderRadius: 4, color: "#e2e8f0", fontSize: 11 }}>admin123</code>
-              &nbsp;&nbsp;Team: <code style={{ background: "rgba(255,255,255,0.06)", padding: "2px 8px", borderRadius: 4, color: "#e2e8f0", fontSize: 11 }}>team123</code>
-            </p>
-          </div>
         </div>
       </div>
     );
@@ -398,7 +479,7 @@ export default function App() {
               </span>
             </div>
           )}
-          <button className="btn-press" onClick={() => { setRole(null); setView("dashboard"); setPw(""); }}
+          <button className="btn-press" onClick={() => { setRole(null); setView("dashboard"); setPw(""); setLoginUser(""); setUserName(""); setRecords([]); }}
             style={{ width: "100%", padding: "8px 14px", border: "none", borderRadius: 8, cursor: "pointer", background: "rgba(255,255,255,0.04)", color: "#64748b", display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 500, justifyContent: sidebarOpen ? "flex-start" : "center", fontFamily: "'DM Sans', sans-serif" }}>
             <span>⏻</span>{sidebarOpen && "Logout"}
           </button>
@@ -415,6 +496,8 @@ export default function App() {
               <h1 style={{ fontSize: 26, fontWeight: 800, fontFamily: "'Outfit', sans-serif", letterSpacing: "-0.5px", color: "#0f172a" }}>Dashboard</h1>
               <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>Radiotherapy patient advance overview</p>
             </div>
+
+            {loading && <div style={{ textAlign: "center", padding: 40, color: "#64748b", fontSize: 14 }}>Loading records...</div>}
 
             {/* Stat Cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 24 }}>
@@ -510,6 +593,9 @@ export default function App() {
                 <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>{records.length} total advance records</p>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn-press" onClick={fetchRecords} disabled={loading} style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#475569", padding: "9px 16px", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                  {loading ? "Refreshing..." : "↻ Refresh"}
+                </button>
                 <button className="btn-press" onClick={exportCSV} style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#475569", padding: "9px 16px", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   Export CSV
