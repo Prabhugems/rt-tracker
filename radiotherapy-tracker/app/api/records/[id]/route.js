@@ -14,6 +14,7 @@ const toApp = (rec) => ({
     amount: rec.fields["Amounts"] || 0,
     mode: rec.fields["Mode of Receipt"] || "",
     receiptDate: rec.fields["Date of receipt"] || "",
+    txnNo: rec.fields["Transaction Number"] || "",
     billClosed: rec.fields["Bill Closed Date"] || "",
   },
   created: rec.createdTime,
@@ -28,6 +29,7 @@ const toAirtable = (fields) => {
   if (fields.amount !== undefined) mapped["Amounts"] = parseFloat(fields.amount) || 0;
   if (fields.mode !== undefined) mapped["Mode of Receipt"] = fields.mode;
   if (fields.receiptDate !== undefined) mapped["Date of receipt"] = fields.receiptDate || null;
+  if (fields.txnNo !== undefined) mapped["Transaction Number"] = fields.txnNo || "";
   if (fields.billClosed !== undefined) mapped["Bill Closed Date"] = fields.billClosed || null;
   return mapped;
 };

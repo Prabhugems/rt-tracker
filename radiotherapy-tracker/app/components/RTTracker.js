@@ -108,7 +108,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedRec, setSelectedRec] = useState(null);
 
-  const empty = { regNo: "", opDate: "", ipNo: "", name: "", amount: "", mode: "GPay", receiptDate: "", billClosed: "" };
+  const empty = { regNo: "", opDate: "", ipNo: "", name: "", amount: "", mode: "GPay", receiptDate: "", txnNo: "", billClosed: "" };
   const [form, setForm] = useState({ ...empty });
   const [formErrors, setFormErrors] = useState({});
   const [editRec, setEditRec] = useState(null);
@@ -191,8 +191,9 @@ export default function App() {
   const handleAdd = async () => {
     const e = {};
     if (!form.regNo.trim()) e.regNo = true; if (!form.opDate) e.opDate = true;
-    if (!form.ipNo.trim()) e.ipNo = true; if (!form.name.trim()) e.name = true;
+    if (!form.name.trim()) e.name = true;
     if (!form.amount || parseFloat(form.amount) <= 0) e.amount = true; if (!form.receiptDate) e.receiptDate = true;
+    if (form.mode !== "Cash" && !form.txnNo.trim()) e.txnNo = true;
     setFormErrors(e); if (Object.keys(e).length) return;
     setSaving(true);
     try {
@@ -260,8 +261,8 @@ export default function App() {
   };
 
   const exportCSV = () => {
-    const h = "Registration Number,OP Visit Date,IP Number,Patient Name,Amount,Mode,Date of Receipt,Bill Closed Date";
-    const rows = filtered.map(r => { const f = r.fields; return [f.regNo, f.opDate, f.ipNo, f.name, f.amount, f.mode, f.receiptDate, f.billClosed].map(v => `"${v || ""}"`).join(","); });
+    const h = "Registration Number,OP Visit Date,IP Number,Patient Name,Amount,Mode,Transaction Number,Date of Receipt,Bill Closed Date";
+    const rows = filtered.map(r => { const f = r.fields; return [f.regNo, f.opDate, f.ipNo, f.name, f.amount, f.mode, f.txnNo, f.receiptDate, f.billClosed].map(v => `"${v || ""}"`).join(","); });
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([[h, ...rows].join("\n")], { type: "text/csv" }));
     a.download = `rt_advances_${new Date().toISOString().slice(0,10)}.csv`; a.click(); notify("CSV exported!");
   };
@@ -296,6 +297,7 @@ export default function App() {
         <div class="cell"><div class="lbl">OP Visit Date</div><div class="val">${fmtDate(f.opDate)}</div></div>
         <div class="cell"><div class="lbl">Payment Mode</div><div class="val">${f.mode}</div></div>
       </div>
+      ${f.txnNo ? `<div style="text-align:center;margin:8px 0"><div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600">Transaction Number</div><div style="font-size:14px;font-weight:700;color:#334155;margin-top:2px">${f.txnNo}</div></div>` : ""}
       <div class="amt">${fmt(f.amount)}</div>
       <div class="grid">
         <div class="cell"><div class="lbl">Receipt Date</div><div class="val">${fmtDate(f.receiptDate)}</div></div>
@@ -641,7 +643,7 @@ export default function App() {
                       {[
                         { k: "regNo", l: "Reg No." }, { k: "opDate", l: "OP Date" }, { k: "ipNo", l: "IP No." },
                         { k: "name", l: "Patient Name" }, { k: "amount", l: "Amount" }, { k: "mode", l: "Mode" },
-                        { k: "receiptDate", l: "Receipt Date" }, { k: "billClosed", l: "Status" },
+                        { k: "txnNo", l: "Txn No." }, { k: "receiptDate", l: "Receipt Date" }, { k: "billClosed", l: "Status" },
                       ].map(c => (
                         <th key={c.k} onClick={() => toggleSort(c.k)} style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.8px", color: sortField === c.k ? "#0f766e" : "#94a3b8", cursor: "pointer", whiteSpace: "nowrap", userSelect: "none", transition: "color 0.15s", fontFamily: "'Outfit', sans-serif" }}>
                           {c.l} {sortField === c.k ? (sortDir === "asc" ? "↑" : "↓") : ""}
@@ -652,7 +654,7 @@ export default function App() {
                   </thead>
                   <tbody>
                     {filtered.length === 0 ? (
-                      <tr><td colSpan={9} style={{ textAlign: "center", padding: 48, color: "#94a3b8" }}>
+                      <tr><td colSpan={10} style={{ textAlign: "center", padding: 48, color: "#94a3b8" }}>
                         <div style={{ fontSize: 32, marginBottom: 8 }}>∅</div>
                         <div style={{ fontSize: 14, fontWeight: 600 }}>No records found</div>
                         <div style={{ fontSize: 12, marginTop: 4 }}>Try adjusting your filters</div>
@@ -671,6 +673,7 @@ export default function App() {
                           <td style={{ padding: "12px 14px" }}>
                             <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: `${MODE_COLORS[f.mode] || "#94a3b8"}12`, color: MODE_COLORS[f.mode] || "#94a3b8", letterSpacing: "0.3px" }}>{f.mode}</span>
                           </td>
+                          <td style={{ padding: "12px 14px", fontWeight: 500, color: "#475569", fontSize: 11 }}>{f.txnNo || "—"}</td>
                           <td style={{ padding: "12px 14px", color: "#64748b" }}>{fmtDate(f.receiptDate)}</td>
                           <td style={{ padding: "12px 14px" }}>
                             {isOpen ? (
@@ -723,29 +726,31 @@ export default function App() {
             <div style={{ background: "#fff", borderRadius: 16, padding: 32, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
                 {[
-                  { k: "regNo", l: "Registration Number", t: "text", ph: "e.g. RT-2609" },
-                  { k: "opDate", l: "OP Visit Date", t: "date" },
-                  { k: "ipNo", l: "IP Number", t: "text", ph: "e.g. IP-1209" },
-                  { k: "name", l: "Patient Name", t: "text", ph: "Full name" },
-                  { k: "amount", l: "Amount (₹)", t: "number", ph: "e.g. 15000" },
-                  { k: "mode", l: "Payment Mode", t: "select" },
-                  { k: "receiptDate", l: "Date of Receipt", t: "date" },
+                  { k: "regNo", l: "Registration Number", t: "text", ph: "e.g. RT-2609", req: true },
+                  { k: "opDate", l: "OP Visit Date", t: "date", req: true },
+                  { k: "ipNo", l: "IP Number", t: "text", ph: "e.g. IP-1209", req: false },
+                  { k: "name", l: "Patient Name", t: "text", ph: "Full name", req: true },
+                  { k: "amount", l: "Amount (₹)", t: "number", ph: "e.g. 15000", req: true },
+                  { k: "mode", l: "Payment Mode", t: "select", req: true },
+                  { k: "txnNo", l: "Transaction Number", t: "text", ph: "e.g. TXN123456", req: form.mode !== "Cash" },
+                  { k: "receiptDate", l: "Date of Receipt", t: "date", req: true },
                 ].map(f => (
                   <div key={f.k}>
                     <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#334155", marginBottom: 6, letterSpacing: "0.3px" }}>
-                      {f.l} <span style={{ color: "#ef4444" }}>*</span>
+                      {f.l} {f.req ? <span style={{ color: "#ef4444" }}>*</span> : <span style={{ color: "#94a3b8", fontSize: 10, fontWeight: 400 }}>(optional)</span>}
                     </label>
                     {f.t === "select" ? (
-                      <select value={form[f.k]} onChange={e => setForm({ ...form, [f.k]: e.target.value })}
+                      <select value={form[f.k]} onChange={e => { const v = e.target.value; setForm(p => ({ ...p, [f.k]: v, ...(f.k === "mode" && v === "Cash" ? { txnNo: "" } : {}) })); }}
                         style={{ width: "100%", padding: "11px 14px", border: `1.5px solid ${formErrors[f.k] ? "#ef4444" : "#e2e8f0"}`, borderRadius: 10, fontSize: 13, background: "#f8fafc", boxSizing: "border-box", fontFamily: "'DM Sans', sans-serif" }}>
                         {MODES.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     ) : (
                       <input type={f.t} value={form[f.k]} onChange={e => setForm({ ...form, [f.k]: e.target.value })}
                         placeholder={f.ph} step={f.t === "number" ? "1" : undefined}
-                        style={{ width: "100%", padding: "11px 14px", border: `1.5px solid ${formErrors[f.k] ? "#ef4444" : "#e2e8f0"}`, borderRadius: 10, fontSize: 13, background: "#f8fafc", boxSizing: "border-box", fontFamily: "'DM Sans', sans-serif" }} />
+                        disabled={f.k === "txnNo" && form.mode === "Cash"}
+                        style={{ width: "100%", padding: "11px 14px", border: `1.5px solid ${formErrors[f.k] ? "#ef4444" : "#e2e8f0"}`, borderRadius: 10, fontSize: 13, background: f.k === "txnNo" && form.mode === "Cash" ? "#f1f5f9" : "#f8fafc", boxSizing: "border-box", fontFamily: "'DM Sans', sans-serif" }} />
                     )}
-                    {formErrors[f.k] && <p style={{ color: "#ef4444", fontSize: 10, marginTop: 4, fontWeight: 500 }}>This field is required</p>}
+                    {formErrors[f.k] && <p style={{ color: "#ef4444", fontSize: 10, marginTop: 4, fontWeight: 500 }}>{f.k === "txnNo" ? "Transaction number required for non-Cash payments" : "This field is required"}</p>}
                   </div>
                 ))}
               </div>
@@ -811,7 +816,8 @@ export default function App() {
                 { k: "regNo", l: "Reg No.", t: "text" }, { k: "opDate", l: "OP Visit Date", t: "date" },
                 { k: "ipNo", l: "IP Number", t: "text" }, { k: "name", l: "Patient Name", t: "text" },
                 { k: "amount", l: "Amount (₹)", t: "number" }, { k: "mode", l: "Mode", t: "select" },
-                { k: "receiptDate", l: "Receipt Date", t: "date" }, { k: "billClosed", l: "Bill Closed", t: "date" },
+                { k: "txnNo", l: "Transaction No.", t: "text" }, { k: "receiptDate", l: "Receipt Date", t: "date" },
+                { k: "billClosed", l: "Bill Closed", t: "date" },
               ].map(f => (
                 <div key={f.k}>
                   <label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.5px", textTransform: "uppercase" }}>{f.l}</label>
